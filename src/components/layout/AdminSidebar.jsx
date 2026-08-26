@@ -78,7 +78,7 @@ export function AdminSidebar({ mobileOpen, onClose }) {
 
       <div className="border-t border-stone-800 p-3">
         <NavLink
-          to="/"
+          to="/" target='_blank'
           className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-stone-400 hover:bg-stone-800 hover:text-white"
         >
           <ExternalLink className="h-[18px] w-[18px]" aria-hidden /> View site

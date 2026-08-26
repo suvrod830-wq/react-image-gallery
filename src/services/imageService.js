@@ -5,11 +5,10 @@ import { DEFAULT_PAGE_SIZE } from '../utils/constants';
 import { deleteCloudinaryAsset } from './cloudinaryService';
 import { logActivity } from './activityService';
 
-const IMAGE_LIST_RPC = 'list_images';
-
 /**
- * Database-side search + filters + sort + pagination via the list_images RPC
- * (spec §20, §22, §53 — nothing is filtered in the browser).
+ * Database-side search + filters + sort + pagination. Prefers the list_images
+ * RPC (spec §53) but falls back to direct table queries if the RPC hasn't
+ * been created yet (migration not applied).
  */
 export async function listImages({
   q = '',
@@ -28,34 +27,190 @@ export async function listImages({
 } = {}) {
   if (!supabase) ensureConfigured();
 
-  const { data, error } = await supabase.rpc(IMAGE_LIST_RPC, {
-    p_opts: {
-      q,
-      category,
-      tag,
-      author,
-      album,
-      featured,
-      status,
-      date_from: dateFrom,
-      date_to: dateTo,
-      sort,
-      page,
-      page_size: pageSize,
-      published_only: publishedOnly,
-    },
-  });
+  // Try the RPC first — this is the preferred path (spec §53).
+  try {
+    const { data, error } = await supabase.rpc('list_images', {
+      p_opts: {
+        q,
+        category,
+        tag,
+        author,
+        album,
+        featured,
+        status,
+        date_from: dateFrom,
+        date_to: dateTo,
+        sort,
+        page,
+        page_size: pageSize,
+        published_only: publishedOnly,
+      },
+    });
+    if (error) throw error;
+    const items = Array.isArray(data) ? data : [];
+    return { items, total: Number(items[0]?.total ?? 0) };
+  } catch (err) {
+    // If the RPC doesn't exist (migration not run), fall back to a direct
+    // table query. This keeps the app functional even without the RPC.
+    if (err?.message && err.message.includes('does not exist')) {
+      return listImagesDirect({
+        q, category, tag, author, album, featured, status,
+        dateFrom, dateTo, sort, page, pageSize, publishedOnly,
+      });
+    }
+    throw err;
+  }
+}
 
+/**
+ * Fallback direct-table query when the list_images RPC doesn't exist.
+ * Supports the same filtering, sorting and pagination.
+ */
+async function listImagesDirect({
+  q, category, tag, author, album, featured, status,
+  dateFrom, dateTo, sort, page, pageSize, publishedOnly,
+}) {
+  const offset = (page - 1) * pageSize;
+
+  // Resolve slugs to IDs for filtering
+  let categoryId, authorId, albumId, tagId;
+  if (category) {
+    const { data: c } = await supabase.from('categories').select('id').eq('slug', category).maybeSingle();
+    categoryId = c?.id;
+  }
+  if (author) {
+    const { data: a } = await supabase.from('authors').select('id').eq('slug', author).maybeSingle();
+    authorId = a?.id;
+  }
+  if (album) {
+    const { data: a } = await supabase.from('albums').select('id').eq('slug', album).maybeSingle();
+    albumId = a?.id;
+  }
+  if (tag) {
+    const { data: t } = await supabase.from('tags').select('id').eq('slug', tag).maybeSingle();
+    tagId = t?.id;
+  }
+
+  // Build the query with exact count
+  let query = supabase
+    .from('images')
+    .select('id, title, slug, description, caption, alt_text, cloudinary_public_id, secure_url, width, height, format, file_size, category_id, author_id, album_id, sort_order, is_featured, is_published, allow_download, view_count, created_at, updated_at, published_at', { count: 'exact', head: false });
+
+  // Published filter
+  if (publishedOnly) query = query.eq('is_published', true);
+  if (status === 'draft') query = query.eq('is_published', false);
+  if (status === 'published') query = query.eq('is_published', true);
+
+  // ID-based filters
+  if (categoryId) query = query.eq('category_id', categoryId);
+  if (authorId) query = query.eq('author_id', authorId);
+  if (albumId) query = query.eq('album_id', albumId);
+  if (featured) query = query.eq('is_featured', featured === 'true');
+  if (dateFrom) query = query.gte('created_at', dateFrom);
+  if (dateTo) query = query.lte('created_at', dateTo + 'T23:59:59Z');
+
+  // Tag filter via subquery on image_tags
+  if (tagId) {
+    const { data: tagImageIds } = await supabase
+      .from('image_tags')
+      .select('image_id')
+      .eq('tag_id', tagId);
+    const ids = tagImageIds?.map((t) => t.image_id) || [];
+    query = query.in('id', ids.length > 0 ? ids : [null]);
+  }
+
+  // Search via ILIKE
+  if (q) {
+    const term = `%${q}%`;
+    query = query.or(`title.ilike.${term},description.ilike.${term},caption.ilike.${term},alt_text.ilike.${term}`);
+  }
+
+  // Sort
+  const orders = {
+    newest: { column: 'created_at', ascending: false },
+    oldest: { column: 'created_at', ascending: true },
+    most_viewed: { column: 'view_count', ascending: false },
+    recently_updated: { column: 'updated_at', ascending: false },
+    title_asc: { column: 'title', ascending: true },
+    title_desc: { column: 'title', ascending: false },
+  };
+  const ord = orders[sort] || orders.newest;
+  query = query.order(ord.column, { ascending: ord.ascending, nullsFirst: false });
+
+  // Pagination
+  query = query.range(offset, offset + pageSize - 1);
+
+  const { data, error, count } = await query;
   if (error) throw error;
-  const items = Array.isArray(data) ? data : [];
-  return { items, total: Number(items[0]?.total ?? 0) };
+
+  // Attach tags and related entities as flat references
+  const items = (data || []).map((img) => ({
+    ...img,
+    tags: [],
+    category: img.category_id ? { id: img.category_id, name: null, slug: null } : null,
+    author: img.author_id ? { id: img.author_id, name: null, slug: null, avatar_url: null } : null,
+    album: img.album_id ? { id: img.album_id, name: null, slug: null } : null,
+  }));
+
+  return { items, total: count ?? items.length };
 }
 
 export async function getImageBySlug(slug) {
   if (!supabase) ensureConfigured();
-  const { data, error } = await supabase.rpc('get_image_by_slug', { p_slug: slug });
-  if (error) throw error;
-  return Array.isArray(data) && data.length ? data[0] : null;
+  // Try the RPC first, fall back to direct query
+  try {
+    const { data, error } = await supabase.rpc('get_image_by_slug', { p_slug: slug });
+    if (error) throw error;
+    return Array.isArray(data) && data.length ? data[0] : null;
+  } catch (err) {
+    if (err?.message && err.message.includes('does not exist')) {
+      const { data, error } = await supabase
+        .from('images')
+        .select('id, title, slug, description, caption, alt_text, cloudinary_public_id, secure_url, width, height, format, file_size, category_id, author_id, album_id, sort_order, is_featured, is_published, allow_download, view_count, created_at, updated_at, published_at')
+        .eq('slug', slug)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+
+      // Fetch tags
+      const { data: tagRows } = await supabase
+        .from('image_tags')
+        .select('tag_id')
+        .eq('image_id', data.id);
+      let tags = [];
+      if (tagRows?.length) {
+        const { data: tagData } = await supabase
+          .from('tags')
+          .select('id, name, slug')
+          .in('id', tagRows.map((r) => r.tag_id));
+        tags = tagData || [];
+      }
+
+      // Fetch category name/slug
+      let category = null;
+      if (data.category_id) {
+        const { data: c } = await supabase.from('categories').select('id, name, slug').eq('id', data.category_id).maybeSingle();
+        category = c;
+      }
+
+      // Fetch author
+      let author = null;
+      if (data.author_id) {
+        const { data: a } = await supabase.from('authors').select('id, name, slug, bio, avatar_url, website_url').eq('id', data.author_id).maybeSingle();
+        author = a;
+      }
+
+      // Fetch album
+      let album = null;
+      if (data.album_id) {
+        const { data: a } = await supabase.from('albums').select('id, name, slug, description').eq('id', data.album_id).maybeSingle();
+        album = a;
+      }
+
+      return { ...data, tags, category, author, album };
+    }
+    throw err;
+  }
 }
 
 /** Admin: fetch a single image by id with its tag ids (RLS permits admins). */
@@ -63,14 +218,22 @@ export async function getImageById(id) {
   if (!supabase) ensureConfigured();
   const { data, error } = await supabase
     .from('images')
-    .select('*, tags:image_tags(tag_id)')
+    .select('id, title, slug, description, caption, alt_text, cloudinary_public_id, secure_url, width, height, format, file_size, category_id, author_id, album_id, sort_order, is_featured, is_published, allow_download, view_count, created_at, updated_at, published_at')
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
+
+  // Fetch tag IDs
+  const { data: tagRows } = await supabase
+    .from('image_tags')
+    .select('tag_id')
+    .eq('image_id', id);
+  const tagIds = (tagRows || []).map((t) => t.tag_id);
+
   return {
     ...data,
-    tagIds: (data.tags || []).map((t) => t.tag_id),
+    tagIds,
     category: data.category_id ? { id: data.category_id } : null,
   };
 }
@@ -135,10 +298,14 @@ export async function recordImageView(imageId) {
     sessionKey = crypto.randomUUID();
     localStorage.setItem('gallery_session_id', sessionKey);
   }
-  await supabase.rpc('record_image_view', {
-    p_image_id: imageId,
-    p_session_key: sessionKey,
-  });
+  try {
+    await supabase.rpc('record_image_view', {
+      p_image_id: imageId,
+      p_session_key: sessionKey,
+    });
+  } catch {
+    // Silently ignore — view counting is non-critical.
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -148,12 +148,29 @@ export function ImageUploadForm({ categories, tags, authors, albums, onUploaded 
     }
     setUploading(false);
     if (failed > 0) toast.error(`${failed} image(s) failed. Successful uploads were still saved.`);
-    else if (ok > 0) toast.success(`${ok} image(s) uploaded.`);
+    else if (ok > 0) toast.success(`${ok} image(s) uploaded successfully.`);
     if (ok > 0) onUploaded?.();
+
+    // Auto-reload: if all succeeded with no failures, clear the form
+    // after a brief delay so the user sees "Completed" before it resets.
+    if (ok > 0 && failed === 0) {
+      setTimeout(() => {
+        setItems((current) => {
+          // Release preview object URLs to prevent memory leaks
+          current.forEach((it) => {
+            if (it.previewUrl) URL.revokeObjectURL(it.previewUrl);
+          });
+          return [];
+        });
+      }, 3500);
+    }
   }
 
   const readyCount = items.filter((it) => it.status === 'ready').length;
+  const completedCount = items.filter((it) => it.status === 'completed').length;
+  const failedCount = items.filter((it) => it.status === 'failed').length;
   const inProgress = items.some((it) => it.status === 'uploading' || it.status === 'processing');
+  const allDone = items.length > 0 && !inProgress && (readyCount + failedCount) === 0;
 
   return (
     <div className="space-y-6">
@@ -352,13 +369,44 @@ export function ImageUploadForm({ categories, tags, authors, albums, onUploaded 
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-stone-500 dark:text-stone-400">
-              {readyCount} ready · {items.filter((i) => i.status === 'completed').length} completed ·{' '}
-              {items.filter((i) => i.status === 'failed').length} failed
+              {readyCount} ready · {completedCount} completed · {failedCount} failed
             </p>
-            <Button onClick={uploadAll} loading={uploading} disabled={readyCount === 0 || inProgress} size="lg">
-              {uploading ? 'Uploading…' : `Upload ${readyCount} image${readyCount === 1 ? '' : 's'}`}
-            </Button>
+
+            {allDone ? (
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                  ✓ {completedCount} image{completedCount === 1 ? '' : 's'} uploaded
+                </span>
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={() => {
+                    // Release all preview object URLs before clearing
+                    setItems((current) => {
+                      current.forEach((it) => {
+                        if (it.previewUrl) URL.revokeObjectURL(it.previewUrl);
+                      });
+                      return [];
+                    });
+                    setUploading(false);
+                  }}
+                >
+                  Upload more images
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={uploadAll} loading={uploading} disabled={readyCount === 0 || inProgress} size="lg">
+                {uploading ? 'Uploading…' : `Upload ${readyCount} image${readyCount === 1 ? '' : 's'}`}
+              </Button>
+            )}
           </div>
+
+          {/* Auto-reload hint when all done */}
+          {allDone && (
+            <p className="text-center text-xs text-stone-400 dark:text-stone-500">
+              Click "Upload more" to start a new batch, or drop new files into the area above.
+            </p>
+          )}
         </div>
       )}
     </div>

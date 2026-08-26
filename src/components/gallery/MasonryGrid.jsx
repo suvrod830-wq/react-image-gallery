@@ -1,9 +1,12 @@
 import { ImageCard } from './ImageCard';
 
-/** Masonry layout via CSS columns (spec §4, §17). */
+/**
+ * Pinterest-style masonry waterfall layout.
+ * Uses CSS columns which naturally stack items of varying heights.
+ */
 export function MasonryGrid({ images, onOpen }) {
   return (
-    <div className="columns-1 gap-3 sm:columns-2 lg:columns-3 xl:columns-4 [&>*]:mb-3 [&>*]:break-inside-avoid">
+    <div className="columns-2 gap-2 md:gap-3 lg:gap-4 sm:columns-3 lg:columns-4 xl:columns-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
       {images.map((image) => (
         <ImageCard key={image.id} image={image} onOpen={onOpen} />
       ))}

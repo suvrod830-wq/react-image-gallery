@@ -20,9 +20,19 @@ export function createTaxonomyService(cfg) {
   /** Index pages: each entry with published image count + cover (spec §4). */
   async function listWithCounts() {
     if (!supabase) ensureConfigured();
-    const { data, error } = await supabase.rpc('taxonomy_list', { p_table: rpcTable });
-    if (error) throw error;
-    return data ?? [];
+    try {
+      const { data, error } = await supabase.rpc('taxonomy_list', { p_table: rpcTable });
+      if (error) throw error;
+      return data ?? [];
+    } catch (err) {
+      // If the taxonomy_list RPC doesn't exist, fall back to listing all
+      // entries without counts. Better than breaking the page.
+      if (err?.message?.includes('does not exist')) {
+        const rows = await listAll();
+        return rows.map((r) => ({ ...r, image_count: 0, cover_public_id: null }));
+      }
+      throw err;
+    }
   }
 
   /** Plain list for form dropdowns (fast, no counts). */
@@ -43,7 +53,10 @@ export function createTaxonomyService(cfg) {
 
   async function getBySlug(slug) {
     if (!supabase) ensureConfigured();
-    const { data, error } = await supabase.from(table).select('*').eq('slug', slug).maybeSingle();
+    // Use explicit column names — select('*') can cause 400 errors in newer
+    // supabase-js versions (v2.109+).
+    const cols = ['id', 'name', 'slug', ...fields].filter(Boolean).join(', ');
+    const { data, error } = await supabase.from(table).select(cols).eq('slug', slug).maybeSingle();
     if (error) throw error;
     return data;
   }

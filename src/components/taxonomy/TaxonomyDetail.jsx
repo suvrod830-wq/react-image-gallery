@@ -9,31 +9,45 @@ import { GallerySkeleton } from '../gallery/GallerySkeleton';
 import { EmptyState, ErrorState, ConfigMissing, Spinner } from '../ui/Feedback';
 import { cloudinaryUrl } from '../../lib/cloudinary';
 
-/**
- * Generic detail page: a taxonomy entity header + its images (spec §4).
- */
 export function TaxonomyDetail({ service, routePrefix, entityName, singular, field }) {
   const { slug } = useParams();
   const [entity, setEntity] = useState(null);
-  const [error, setError] = useState(null);
+  const [entityError, setEntityError] = useState(null);
 
-  const { items, total, loading, loadMore, hasMore, loadingMore } = useImages({
+  const {
+    items,
+    total,
+    loading,
+    loadMore,
+    hasMore,
+    loadingMore,
+    error: imagesError,
+    retry,
+  } = useImages({
     filters: { [field]: slug, sort: 'newest' },
+    publishedOnly: true,
   });
 
   useDocumentTitle(entity?.name || singular, {
     description: entity?.description || entity?.bio || '',
     canonicalPath: `/${routePrefix}/${slug}`,
-    image: entity?.cover_public_id ? cloudinaryUrl({ publicId: entity.cover_public_id, width: 1200 }) : undefined,
+    image: entity?.cover_public_id
+      ? cloudinaryUrl({ publicId: entity.cover_public_id, width: 1200 })
+      : undefined,
   });
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     let active = true;
+    setEntityError(null);
     service
       .getBySlug(slug)
-      .then((row) => active && setEntity(row))
-      .catch((err) => active && setError(err.message));
+      .then((row) => {
+        if (active) setEntity(row);
+      })
+      .catch((err) => {
+        if (active) setEntityError(err?.message || 'Failed to load details.');
+      });
     return () => {
       active = false;
     };
@@ -42,22 +56,21 @@ export function TaxonomyDetail({ service, routePrefix, entityName, singular, fie
   if (!isSupabaseConfigured) {
     return (
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
-        <ConfigMissing message={`Connect Supabase (see README.md) to view ${singular.toLowerCase()} pages.`} />
+        <ConfigMissing
+          message={`Connect Supabase (see README.md) to view ${singular.toLowerCase()} pages.`}
+        />
       </div>
     );
   }
 
-  if (error) {
-    return (
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
-        <ErrorState message={error} />
-      </div>
-    );
-  }
+  const showError = entityError || imagesError;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-      <Link to={`/${routePrefix}`} className="mb-6 inline-flex items-center gap-1.5 text-sm text-stone-500 hover:text-stone-900 dark:hover:text-white">
+      <Link
+        to={`/${routePrefix}`}
+        className="mb-6 inline-flex items-center gap-1.5 text-sm text-stone-500 hover:text-stone-900 dark:hover:text-white"
+      >
         <ArrowLeft className="h-4 w-4" aria-hidden /> All {entityName.toLowerCase()}
       </Link>
 
@@ -65,7 +78,11 @@ export function TaxonomyDetail({ service, routePrefix, entityName, singular, fie
       <header className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-center">
         <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-stone-200 dark:bg-stone-800">
           {entity?.cover_public_id && (
-            <img src={cloudinaryUrl({ publicId: entity.cover_public_id, width: 160, height: 160 })} alt="" className="h-full w-full object-cover" />
+            <img
+              src={cloudinaryUrl({ publicId: entity.cover_public_id, width: 160, height: 160 })}
+              alt=""
+              className="h-full w-full object-cover"
+            />
           )}
         </div>
         <div className="min-w-0">
@@ -73,8 +90,14 @@ export function TaxonomyDetail({ service, routePrefix, entityName, singular, fie
           <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
             {entity ? `${total} image${total === 1 ? '' : 's'}` : '…'}
           </p>
-          {entity?.description && <p className="mt-2 max-w-2xl text-sm text-stone-600 dark:text-stone-300">{entity.description}</p>}
-          {entity?.bio && <p className="mt-2 max-w-2xl text-sm text-stone-600 dark:text-stone-300">{entity.bio}</p>}
+          {entity?.description && (
+            <p className="mt-2 max-w-2xl text-sm text-stone-600 dark:text-stone-300">
+              {entity.description}
+            </p>
+          )}
+          {entity?.bio && (
+            <p className="mt-2 max-w-2xl text-sm text-stone-600 dark:text-stone-300">{entity.bio}</p>
+          )}
           {entity?.website_url && (
             <a
               href={entity.website_url}
@@ -88,7 +111,9 @@ export function TaxonomyDetail({ service, routePrefix, entityName, singular, fie
         </div>
       </header>
 
-      {loading ? (
+      {showError ? (
+        <ErrorState message={String(showError)} onRetry={retry} />
+      ) : loading ? (
         <GallerySkeleton count={9} />
       ) : items.length === 0 ? (
         <EmptyState
