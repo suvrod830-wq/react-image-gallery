@@ -28,6 +28,7 @@ export function AdminLayout() {
           </Link>
           <Link to={'/admin/categories'} className='w-8 h-8 bg-amber-200 text-black rounded-full inline-flex items-center justify-center cursor-pointer'>
             <FolderTree className='size-4' />
+            <span className='hidden'>category</span>
           </Link>
         </header>
         <main className="flex-1 p-4 sm:p-6 lg:p-8">
