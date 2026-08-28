@@ -312,16 +312,41 @@ export async function recordImageView(imageId) {
 // Admin CRUD (authorization enforced by RLS — admin-only policies)
 // ---------------------------------------------------------------------------
 
-function retryUniqueSlug(payload, attempt) {
-  const suffix = attempt === 1 ? '' : `-${attempt}`;
-  return { ...payload, slug: `${slugify(payload.slug || payload.title)}${suffix}` };
+/** Robust check for PostgreSQL unique-violation errors (PostgREST returns 409). */
+function isUniqueViolation(err) {
+  if (!err) return false;
+  if (err?.code === '23505') return true;
+  const text = `${err?.message ?? ''} ${err?.details ?? ''} ${err?.hint ?? ''}`;
+  return /duplicate key|unique constraint|already exists/i.test(text);
+}
+
+/** Find a slug that isn't taken by another image row. */
+async function nextAvailableSlug(baseSlug, excludeId) {
+  let slug = baseSlug || 'untitled';
+  let i = 2;
+  for (;;) {
+    let query = supabase.from('images').select('id').eq('slug', slug);
+    if (excludeId) query = query.neq('id', excludeId);
+    const { data, error } = await query;
+    if (error) throw error;
+    if (!data || data.length === 0) return slug;
+    slug = `${baseSlug || 'untitled'}-${i}`;
+    i += 1;
+    if (i > 30) return `${slug}-${Date.now().toString(36)}`;
+  }
 }
 
 export async function createImage({ tags = [], ...payload }) {
   if (!supabase) ensureConfigured();
+
+  // Resolve a unique slug BEFORE the insert — duplicate titles just get a
+  // "-2", "-3", … suffix instead of failing (spec §67).
+  const baseSlug = slugify(payload.title) || 'untitled';
+  const slug = await nextAvailableSlug(baseSlug);
+
   const base = {
     title: payload.title,
-    slug: slugify(payload.title),
+    slug,
     description: payload.description || null,
     caption: payload.caption || null,
     alt_text: payload.alt_text || null,
@@ -343,24 +368,27 @@ export async function createImage({ tags = [], ...payload }) {
     published_at: payload.is_published ? new Date().toISOString() : null,
   };
 
-  let created = null;
-  for (let attempt = 1; attempt <= 10; attempt += 1) {
-    const { data, error } = await supabase
-      .from('images')
-      .insert(retryUniqueSlug(base, attempt))
-      .select('id')
-      .single();
-    if (!error) {
-      created = data;
-      break;
+  const { data, error } = await supabase.from('images').insert(base).select('id').single();
+  if (error) {
+    if (isUniqueViolation(error)) {
+      // Race condition fallback: re-resolve and retry once.
+      const slug2 = await nextAvailableSlug(baseSlug);
+      const retry = await supabase
+        .from('images')
+        .insert({ ...base, slug: slug2 })
+        .select('id')
+        .single();
+      if (retry.error) throw retry.error;
+      await replaceImageTags(retry.data.id, tags);
+      await logActivity('Uploaded image', 'image', retry.data.id, { title: payload.title });
+      return retry.data;
     }
-    if (error.code !== '23505') throw error; // 23505 = unique_violation
-    if (attempt === 10) throw error;
+    throw error;
   }
 
-  await replaceImageTags(created.id, tags);
-  await logActivity('Uploaded image', 'image', created.id, { title: payload.title });
-  return created;
+  await replaceImageTags(data.id, tags);
+  await logActivity('Uploaded image', 'image', data.id, { title: payload.title });
+  return data;
 }
 
 export async function updateImage(id, { tags, ...payload }) {
@@ -390,10 +418,20 @@ export async function updateImage(id, { tags, ...payload }) {
   for (const [key, col] of Object.entries(map)) {
     if (key in payload) patch[col] = payload[key];
   }
-  if ('title' in patch) patch.slug = slugify(patch.title);
+  if ('title' in patch) {
+    // Never collide: re-renaming to an existing title gets a "-2" suffix.
+    patch.slug = await nextAvailableSlug(slugify(patch.title) || 'untitled', id);
+  }
 
   const { data, error } = await supabase.from('images').update(patch).eq('id', id).select().single();
-  if (error) throw error;
+  if (error) {
+    if (isUniqueViolation(error) && patch.slug) {
+      throw new Error(
+        'Another image already uses that title/slug. Change the title slightly (the system auto-appends -2, -3… to keep slugs unique).',
+      );
+    }
+    throw error;
+  }
 
   if (tags) await replaceImageTags(id, tags);
 

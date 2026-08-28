@@ -206,13 +206,11 @@ export default function EditImage() {
             </Field>
             <Field label="Author" htmlFor="author" error={errors.author_id?.message}>
               <Select id="author" {...register('author_id')}>
-                <option value="">None</option>
                 {options.authors.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </Select>
             </Field>
             <Field label="Album" htmlFor="album" error={errors.album_id?.message}>
               <Select id="album" {...register('album_id')}>
-                <option value="">None</option>
                 {options.albums.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </Select>
             </Field>

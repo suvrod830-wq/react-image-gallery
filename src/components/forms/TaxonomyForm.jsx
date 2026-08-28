@@ -39,17 +39,25 @@ export function TaxonomyForm({ open, onClose, onSaved, service, schema, entityLa
 
   async function onSubmit(values) {
     try {
+      const trimmed = { ...values, name: String(values.name || '').trim() };
+      if (!trimmed.name) {
+        toast.error('Name is required.');
+        return;
+      }
       if (isEdit) {
-        await service.update(editItem.id, values);
+        await service.update(editItem.id, trimmed);
         toast.success(`${entityLabel} updated.`);
       } else {
-        await service.create(values);
+        await service.create(trimmed);
         toast.success(`${entityLabel} created.`);
       }
       onSaved();
       onClose();
     } catch (err) {
-      toast.error(err?.message === 'Database error saving changes' ? 'Could not save. Check for duplicate names.' : 'Something went wrong. Please try again.');
+      // Surface the friendly message thrown by the service (e.g. duplicates,
+      // RLS, not-found). Fall back to a generic message for anything else.
+      const msg = err?.message && err.message.length < 180 ? err.message : 'Something went wrong. Please try again.';
+      toast.error(msg);
     }
   }
 
