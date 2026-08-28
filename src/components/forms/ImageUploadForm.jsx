@@ -204,16 +204,16 @@ export function ImageUploadForm({ categories, tags, authors, albums, onUploaded 
         tabIndex={0}
         onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
         aria-label="Upload images"
-        className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-6 py-12 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
+        className={`flex cursor-pointer flex-col items-center justify-center md:gap-3 rounded-2xl border-2 border-dashed px-3 md:px-5 py-5 md:py-10 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
           dragOver
             ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/30'
             : 'border-stone-300 hover:border-stone-400 dark:border-stone-700 dark:hover:border-stone-600'
         }`}
       >
-        <UploadCloud className={`h-12 w-12 ${dragOver ? 'text-brand-500' : 'text-stone-400'}`} aria-hidden />
+        <UploadCloud className={`size-8 md:size-10 ${dragOver ? 'text-brand-500' : 'text-stone-400'}`} aria-hidden />
         <div>
-          <p className="font-medium text-stone-800 dark:text-stone-100">Drag &amp; drop images here, or click to browse</p>
-          <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
+          <p className="font-medium text-stone-800 dark:text-stone-100 text-sm md:text-base">Drag &amp; drop images here, or click to browse</p>
+          <p className="mt-1 text-xs md:text-sm text-stone-500 dark:text-stone-400">
             JPEG, PNG, WebP, AVIF, GIF · up to {formatFileSize(MAX_UPLOAD_BYTES)} each · multiple files supported
           </p>
         </div>
@@ -395,7 +395,9 @@ export function ImageUploadForm({ categories, tags, authors, albums, onUploaded 
                 </Button>
               </div>
             ) : (
-              <Button onClick={uploadAll} loading={uploading} disabled={readyCount === 0 || inProgress} size="lg">
+                <Button onClick={uploadAll} loading={uploading} disabled={readyCount === 0 || inProgress} size="lg"
+                  className="fixed bottom-4 right-4 z-40 md:static"
+                >
                 {uploading ? 'Uploading…' : `Upload ${readyCount} image${readyCount === 1 ? '' : 's'}`}
               </Button>
             )}

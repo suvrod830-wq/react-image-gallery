@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, Outlet } from 'react-router-dom';
-import { FolderTree, Menu, Plus } from 'lucide-react';
+import { ArrowUpRight, FolderTree, Menu, Plus } from 'lucide-react';
 import { AdminSidebar } from './AdminSidebar';
 
 export function AdminLayout() {
@@ -23,6 +23,10 @@ export function AdminLayout() {
             </button>
             <h1 className="text-sm font-semibold text-stone-700 dark:text-stone-200">Admin Console</h1>
           </div>
+
+          <Link to={'/'} target='_blank' className='w-8 h-8 bg-amber-200 text-black rounded-full inline-flex items-center justify-center cursor-pointer'>
+            <ArrowUpRight className='size-5' />
+          </Link>
           <Link to={'/admin/images/upload'} className='w-8 h-8 bg-amber-200 text-black rounded-full inline-flex items-center justify-center cursor-pointer'>
             <Plus className='size-5' />
           </Link>

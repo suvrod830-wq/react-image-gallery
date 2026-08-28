@@ -220,7 +220,7 @@ export default function EditImage() {
             <TagInput value={tags} suggestions={options.tags} onChange={setTags} />
           </Field>
 
-          <div className="flex flex-wrap gap-6 pt-2">
+          <div className="flex flex-wrap gap-6 pt-2 mb-16 md:mb-0">
             <label className="flex items-center gap-2 text-sm">
               <Switch checked={published} onChange={(v) => setValue('is_published', v)} label="Published" />
               Published
@@ -235,7 +235,7 @@ export default function EditImage() {
             </label>
           </div>
 
-          <div className="flex justify-end gap-3 border-t border-stone-200 pt-4 dark:border-stone-800">
+          <div className="flex justify-center md:justify-end gap-3 border-t border-stone-200 pt-4 dark:border-stone-800 fixed bottom-0 right-0 z-40 md:static bg-white pb-2 w-full md:w-auto mt-4">
             <Link to="/admin/images"><Button variant="outline">Cancel</Button></Link>
             <Button type="submit" loading={isSubmitting}>
               <Save className="h-4 w-4" aria-hidden /> Save changes
