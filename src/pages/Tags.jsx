@@ -7,7 +7,7 @@ export default function Tags() {
       title="Tags"
       description="Explore images by tag."
       service={tagService}
-      routePrefix="tag"
+      routePrefix="tags"
       entityName="Tag"
       metaDescription="Browse all image tags."
     />

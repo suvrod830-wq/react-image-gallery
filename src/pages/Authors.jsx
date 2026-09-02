@@ -7,7 +7,7 @@ export default function Authors() {
       title="Authors"
       description="The photographers behind the collection."
       service={authorService}
-      routePrefix="author"
+      routePrefix="authors"
       entityName="Author"
       metaDescription="Browse all photographers and authors."
     />

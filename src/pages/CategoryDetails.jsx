@@ -5,7 +5,7 @@ export default function CategoryDetails() {
   return (
     <TaxonomyDetail
       service={categoryService}
-      routePrefix="category"
+      routePrefix="categories"
       entityName="Categories"
       singular="Category"
       field="category"

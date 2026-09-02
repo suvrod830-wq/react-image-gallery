@@ -1,10 +1,20 @@
 import { createClient } from '@supabase/supabase-js';
 import { env, isSupabaseConfigured } from './env';
 
-// Browser-side Supabase client. Uses the ANON key only — Row Level Security
-// policies in the database are the actual security boundary (spec §33).
-// The service_role key never touches the browser; it lives exclusively in
-// the serverless functions under /api.
+const fetchWithTimeout = async (input, init = {}) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
 export const supabase = isSupabaseConfigured
   ? createClient(env.supabaseUrl, env.supabaseAnonKey, {
       auth: {
@@ -12,11 +22,20 @@ export const supabase = isSupabaseConfigured
         autoRefreshToken: true,
         detectSessionInUrl: true,
       },
+      global: {
+        fetch: fetchWithTimeout,
+      },
     })
   : null;
 
 export function getSession() {
-  return supabase?.auth.getSession() ?? Promise.resolve({ data: { session: null }, error: null });
+  return (
+    supabase?.auth.getSession() ??
+    Promise.resolve({
+      data: { session: null },
+      error: null,
+    })
+  );
 }
 
 export function getSessionUser() {
