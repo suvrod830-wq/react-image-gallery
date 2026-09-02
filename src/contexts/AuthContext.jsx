@@ -25,11 +25,29 @@ export function AuthProvider({ children }) {
         setLoading(false);
         return;
       }
-      const userNow = await getSessionUser();
-      if (!active) return;
-      setUser(userNow);
-      if (userNow) await refreshProfile(userNow.id);
-      setLoading(false);
+
+      try {
+        const userNow = await getSessionUser();
+
+        if (!active) return;
+
+        setUser(userNow);
+
+        if (userNow) {
+          await refreshProfile(userNow.id);
+        }
+      } catch (error) {
+        console.error('Auth initialization failed:', error);
+
+        if (active) {
+          setUser(null);
+          setProfile(null);
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
     }
 
     init();

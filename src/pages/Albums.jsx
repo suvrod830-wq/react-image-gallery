@@ -7,7 +7,7 @@ export default function Albums() {
       title="Albums"
       description="Curated collections of photographs."
       service={albumService}
-      routePrefix="album"
+      routePrefix="albums"
       entityName="Album"
       metaDescription="Browse all curated photo albums."
     />

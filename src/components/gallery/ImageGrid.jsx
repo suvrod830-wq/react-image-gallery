@@ -1,4 +1,4 @@
-import { ImageCard } from './ImageCard';
+import { ImageCard } from "./ImageCard";
 
 /**
  * Responsive grid (spec §42): 1–2 columns on mobile, 2–3 tablet, 3–5 desktop.
@@ -7,12 +7,18 @@ import { ImageCard } from './ImageCard';
 export function ImageGrid({ images, onOpen, columns = 4 }) {
   return (
     <div
-      className={`grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 ${
-        columns >= 4 ? 'xl:grid-cols-4' : ''
-      } ${columns >= 5 ? '2xl:grid-cols-5' : ''}`}
+      className={`columns-2
+        sm:columns-3
+        lg:columns-4
+        2xl:columns-5
+        gap-1.5 md:gap-3 ${
+        columns >= 4 ? "xl:grid-cols-4" : ""
+      } ${columns >= 5 ? "2xl:grid-cols-5" : ""}`}
     >
       {images.map((image) => (
-        <ImageCard key={image.id} image={image} onOpen={onOpen} />
+        <div key={image.id} className="mb-4 break-inside-avoid">
+          <ImageCard image={image} onOpen={onOpen} />
+        </div>
       ))}
     </div>
   );
